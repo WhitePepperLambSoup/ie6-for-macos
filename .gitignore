@@ -1,0 +1,13 @@
+.DS_Store
+*.dmg
+*.app/
+ie6-native-runtime
+node_modules/
+dist/
+src/
+src-tauri/
+index.html
+package.json
+package-lock.json
+tsconfig.json
+vite.config.ts

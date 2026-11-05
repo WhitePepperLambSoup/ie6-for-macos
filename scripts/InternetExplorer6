@@ -1,0 +1,66 @@
+#!/bin/zsh
+APP_CONTENTS="$(cd "$(dirname "$0")/.." && pwd)"
+APP_BUNDLE="$(cd "$APP_CONTENTS/.." && pwd)"
+
+if [ -d "$APP_CONTENTS/Resources/ie6-native-runtime" ]; then
+  RUNTIME_DIR="$APP_CONTENTS/Resources/ie6-native-runtime"
+else
+  RUNTIME_DIR="$(cd "$APP_BUNDLE/.." && pwd)/ie6-native-runtime"
+fi
+
+# Strip Gatekeeper quarantine flags if downloaded from the internet
+xattr -dr com.apple.quarantine "$RUNTIME_DIR/Wine Devel.app" 2>/dev/null || true
+
+# Use bundled prefix if writable & owned by current user; otherwise copy to Application Support
+BUNDLED_PREFIX="$RUNTIME_DIR/prefix"
+if [ -w "$BUNDLED_PREFIX" ] && [ "$(stat -f '%u' "$BUNDLED_PREFIX" 2>/dev/null)" = "$(id -u)" ]; then
+  export WINEPREFIX="$BUNDLED_PREFIX"
+else
+  USER_PREFIX="$HOME/Library/Application Support/InternetExplorer6/prefix"
+  if [ ! -d "$USER_PREFIX/drive_c" ]; then
+    mkdir -p "$(dirname "$USER_PREFIX")"
+    rm -rf "$USER_PREFIX"
+    cp -R "$BUNDLED_PREFIX" "$USER_PREFIX"
+    chmod -R u+w "$USER_PREFIX"
+  fi
+  export WINEPREFIX="$USER_PREFIX"
+fi
+
+# Migrate Windows profile username if running on a different Mac user account
+CURRENT_USER="$(id -un)"
+OLD_USER="brettsu"
+if [ -f "$WINEPREFIX/.current_user" ]; then
+  OLD_USER="$(cat "$WINEPREFIX/.current_user")"
+fi
+
+if [ -n "$OLD_USER" ] && [ "$OLD_USER" != "$CURRENT_USER" ]; then
+  if [ -d "$WINEPREFIX/drive_c/users/$OLD_USER" ] && [ ! -d "$WINEPREFIX/drive_c/users/$CURRENT_USER" ]; then
+    mv "$WINEPREFIX/drive_c/users/$OLD_USER" "$WINEPREFIX/drive_c/users/$CURRENT_USER"
+  fi
+  python3 - "$WINEPREFIX" "$OLD_USER" "$CURRENT_USER" << 'EOF'
+import sys, os
+prefix, old_u, new_u = sys.argv[1], sys.argv[2], sys.argv[3]
+for reg in ["system.reg", "user.reg"]:
+    p = os.path.join(prefix, reg)
+    if os.path.isfile(p):
+        s = open(p, "r", encoding="utf-8", errors="surrogateescape").read()
+        s = s.replace(f"\\\\users\\\\{old_u}", f"\\\\users\\\\{new_u}")
+        s = s.replace(f'"USERNAME"="{old_u}"', f'"USERNAME"="{new_u}"')
+        open(p, "w", encoding="utf-8", errors="surrogateescape").write(s)
+EOF
+  echo "$CURRENT_USER" > "$WINEPREFIX/.current_user"
+fi
+
+WEB_DIR="$WINEPREFIX/drive_c/windows/web"
+export WINE="$RUNTIME_DIR/Wine Devel.app/Contents/Resources/wine/bin/wine"
+export WINEDLLOVERRIDES="krnl386.exe16=;winevdm.exe="
+export WINEDEBUG=-all
+
+# Ensure local HTTP server for Start Page is running on 127.0.0.1:19996
+if ! lsof -iTCP:19996 -sTCP:LISTEN >/dev/null 2>&1; then
+  nohup python3 -m http.server 19996 --bind 127.0.0.1 --directory "$WEB_DIR" >/dev/null 2>&1 &
+  sleep 0.3
+fi
+
+TARGET_URL="${1:-http://127.0.0.1:19996/start.htm}"
+exec "$WINE" "C:\\Program Files (x86)\\Internet Explorer\\iexplore.exe" "$TARGET_URL"
