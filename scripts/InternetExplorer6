@@ -60,10 +60,10 @@ export WINEDLLOVERRIDES="krnl386.exe16=;winevdm.exe="
 export WINEDEBUG=-all
 
 # Ensure local HTTP server for Start Page is running on 127.0.0.1:19996
-if ! lsof -iTCP:19996 -sTCP:LISTEN >/dev/null 2>&1; then
+if ! /usr/bin/nc -z 127.0.0.1 19996 >/dev/null 2>&1; then
   nohup python3 -m http.server 19996 --bind 127.0.0.1 --directory "$WEB_DIR" >/dev/null 2>&1 &
-  sleep 0.3
 fi
 
-TARGET_URL="${1:-http://127.0.0.1:19996/start.htm}"
+DEFAULT_URL="file:///C:/windows/web/start.htm"
+TARGET_URL="${1:-$DEFAULT_URL}"
 exec "$WINE" "C:\\Program Files (x86)\\Internet Explorer\\iexplore.exe" "$TARGET_URL"
