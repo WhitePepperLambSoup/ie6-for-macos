@@ -26,6 +26,9 @@ else
   export WINEPREFIX="$USER_PREFIX"
 fi
 
+# Prevent wineboot --update from overwriting IE6 32-bit CLSID registrations
+echo "disable" > "$WINEPREFIX/.update-timestamp"
+
 # Migrate Windows profile username if running on a different Mac user account
 CURRENT_USER="$(id -un)"
 OLD_USER="brettsu"

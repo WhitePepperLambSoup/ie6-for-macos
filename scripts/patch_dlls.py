@@ -48,10 +48,35 @@ def patch_kernelbase(path: str) -> None:
     data[0x46f31:0x46f50] = loop_patch
     open(path, "wb").write(data)
 
+def patch_shdoclc(path: str) -> None:
+    data = bytearray(open(path, "rb").read())
+    # Resource string 1211 (0x4bb) at file offset 0x77922 (66 UTF-16LE chars):
+    # Replace legacy http://auto.search.msn.com/response.asp?MT=%1&srch=%2&prov=%3&utf8
+    s1 = "https://www.google.com/search?gbv=1&ie=UTF-8&oe=UTF-8&btnG=Go&q=%1"
+    data[0x77922:0x77922 + 132] = s1.encode("utf-16le")
+    # Resource string 1214 (0x4be) at file offset 0x77a5c (46 UTF-16LE chars):
+    # Replace legacy http://ieautosearch/response.asp?MT=%1&srch=%2
+    s2 = "https://www.google.com/search?gbv=1&hl=en&q=%1"
+    data[0x77a5c:0x77a5c + 92] = s2.encode("utf-16le")
+    open(path, "wb").write(data)
+
+def patch_shdocvw(path: str) -> None:
+    data = bytearray(open(path, "rb").read())
+    # CURLSearchHook (VA 0x71098423, file offset 0x97823):
+    # Treat single-word queries without '.' in the Address Bar as search queries
+    # rather than NetBIOS/WINS hostnames.
+    patch = bytes.fromhex("6a2e57ff15f01200715685c07475e98b000000")
+    data[0x97823:0x97823 + len(patch)] = patch
+    open(path, "wb").write(data)
+
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <path/to/shell32.dll> <path/to/kernelbase.dll>")
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} <shell32.dll> <kernelbase.dll> [shdoclc.dll] [shdocvw.dll]")
         sys.exit(1)
     patch_shell32(sys.argv[1])
     patch_kernelbase(sys.argv[2])
-    print("Successfully patched shell32.dll and kernelbase.dll")
+    if len(sys.argv) >= 4:
+        patch_shdoclc(sys.argv[3])
+    if len(sys.argv) >= 5:
+        patch_shdocvw(sys.argv[4])
+    print("Successfully applied IE6 binary patches")
